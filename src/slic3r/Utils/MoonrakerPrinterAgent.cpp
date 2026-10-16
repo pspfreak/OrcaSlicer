@@ -820,6 +820,13 @@ bool MoonrakerPrinterAgent::fetch_moonraker_filament_data(std::vector<AmsTrayDat
         // so the sync picks that product's preset instead of a generic one for the material type.
         // An unknown id is harmless: the sync falls back by material type, as without the field.
         tray.tray_info_idx = safe_json_string(lane_obj, "filament_id");
+        // A lane that names a Spoolman spool resolves to SPOOLMAN_<filament id>, the id that
+        // Spoolman-generated filament presets carry. No Spoolman, or no such preset, falls through.
+        if (tray.tray_info_idx.empty()) {
+            const int spool_id = safe_json_int(lane_obj, "spool_id");
+            if (spool_id > 0)
+                tray.tray_info_idx = fetch_spoolman_filament_id(spool_id);
+        }
         if (tray.tray_info_idx.empty()) {
             auto* bundle = GUI::wxGetApp().preset_bundle;
             tray.tray_info_idx = bundle
@@ -837,6 +844,50 @@ bool MoonrakerPrinterAgent::fetch_moonraker_filament_data(std::vector<AmsTrayDat
     }
 
     return true;
+}
+
+// Look up a spool through Moonraker's Spoolman proxy; returns "SPOOLMAN_<filament id>" or "".
+std::string MoonrakerPrinterAgent::fetch_spoolman_filament_id(int spool_id)
+{
+    const nlohmann::json request = {
+        {"use_v2_response", true},
+        {"request_method", "GET"},
+        {"path", "/v1/spool/" + std::to_string(spool_id)},
+    };
+
+    std::string response_body;
+    auto        http = Http::post(join_url(device_info.base_url, "/server/spoolman/proxy"));
+    if (!device_info.api_key.empty()) {
+        http.header("X-Api-Key", device_info.api_key);
+    }
+    http.header("Content-Type", "application/json")
+        .set_post_body(request.dump())
+        .timeout_connect(5)
+        .timeout_max(10)
+        .on_complete([&](std::string body, unsigned status) {
+            if (status == 200)
+                response_body = body;
+        })
+        .on_error([&](std::string, std::string err, unsigned) {
+            BOOST_LOG_TRIVIAL(info) << "MoonrakerPrinterAgent::fetch_spoolman_filament_id: spool " << spool_id << ": " << err;
+        })
+        .perform_sync();
+
+    auto json = nlohmann::json::parse(response_body, nullptr, false, true);
+    if (json.is_discarded() || !json.contains("result"))
+        return "";
+
+    // v2 response: { "result": { "response": <spool>, "error": null } }
+    const auto& result = json["result"];
+    const auto& spool  = result.contains("response") ? result["response"] : result;
+    if (!spool.is_object() || !spool.contains("filament") || !spool["filament"].is_object())
+        return "";
+
+    const auto& filament = spool["filament"];
+    if (!filament.contains("id") || !filament["id"].is_number_integer())
+        return "";
+
+    return "SPOOLMAN_" + std::to_string(filament["id"].get<int>());
 }
 
 // Fetch filament info from Happy Hare MMU
