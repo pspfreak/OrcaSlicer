@@ -75,7 +75,7 @@ shared matcher.
 | Bambu AMS | the device itself (RFID / user tray setting), in Bambu's own `GF*` catalog; `BBLPrinterAgent` rewrites it into our id before the matcher sees it (see [The Bambu catalog map](#the-bambu-catalog-map)) |
 | Qidi box | composed at runtime as `QD_<series>_<vendor>_<typeidx>` — vendor and type indices from the device's per-slot saved variables, the series digit inferred client-side from the printer model/name. No preset carries a `QD_*` value, so the slot currently resolves by filament type; mapping the composed id onto the filament's minted id belongs in the agent |
 | Creality CFS | runtime brand/type scoring returns the winning preset's id |
-| Klipper (AFC / Happy Hare) | the lane's `filament_id` in Moonraker's `lane_data` namespace, when the host integration writes one of ours (see [Moonraker `lane_data`](#moonraker-lane_data)); otherwise runtime lookup by filament type |
+| Klipper (AFC / Happy Hare) | the lane's `filament_id` in Moonraker's `lane_data` namespace, when the host integration writes one of ours (see [Moonraker `lane_data`](#moonraker-lane_data)); else, when the lane names a `spool_id`, `SPOOLMAN_<filament id>` looked up through Moonraker's Spoolman proxy (the id Spoolman-generated presets carry); otherwise runtime lookup by filament type |
 | Snapmaker | runtime color/vendor/type match |
 
 Tray-to-preset matching is printer-scoped, but **several consumers match globally by id alone,
@@ -123,14 +123,17 @@ entry and never the entry's own key (`lane1`, `lane2`, ...):
 | `lane` | string holding a non-negative integer | yes — an entry without one is dropped | the tray's 0-based slot index |
 | `material` | string | no | the filament type; an empty one marks the lane as empty |
 | `filament_id` | string | no | the tray id handed to the shared matcher |
+| `spool_id` | positive integer | no | when `filament_id` is absent, the Spoolman spool looked up through Moonraker's `/server/spoolman/proxy`; its filament record id becomes the tray id `SPOOLMAN_<filament id>` |
 | `color` | string | no | the tray color |
 | `bed_temp`, `nozzle_temp` | integer | no | temperature hints for the tray |
 
 A lane's `filament_id` reaches the shared matcher unchanged, as a Bambu tray's translated id
 does, so it resolves only when a compatible root preset carries it. Bambu's own `GF*` codes miss:
 only `BBLPrinterAgent` translates them. A lane whose id misses takes the matcher's type fallback
-and its notice; a lane without one is matched by `material` in the agent
-(`PresetCollection::filament_id_by_type`) before the matcher runs.
+and its notice. A lane without one but with a `spool_id` gets `SPOOLMAN_<filament id>` from
+Spoolman, the id Spoolman-generated filament presets carry; the lookup yields nothing when the
+printer has no Spoolman configured or the spool is unknown. A lane with neither is matched by
+`material` in the agent (`PresetCollection::filament_id_by_type`) before the matcher runs.
 
 Only a JSON string counts as an id. Happy Hare writes Spoolman's numeric filament record id under
 `filament_id`, and the agent treats it as absent.

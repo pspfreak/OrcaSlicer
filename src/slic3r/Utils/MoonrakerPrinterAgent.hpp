@@ -212,6 +212,7 @@ private:
     // System-specific filament fetch methods
     bool fetch_hh_filament_info(std::vector<AmsTrayData>& trays, int& max_lane_index);
     bool fetch_moonraker_filament_data(std::vector<AmsTrayData>& trays, int& max_lane_index);
+    std::string fetch_spoolman_filament_id(int spool_id);
     bool fetch_creality_cfs_data(std::vector<AmsTrayData>& trays, int& max_lane_index);
 
     static std::string normalize_color_value(const std::string& color);
