@@ -1,0 +1,40 @@
+name: Windows build (spoolman-lane-id)
+
+# Fork-only: builds Windows x64 for this branch instead of the full Build all
+# matrix. Runs on pushes that change the sources, and on manual dispatch.
+on:
+  push:
+    branches:
+     - spoolman-lane-id
+    paths:
+     - 'deps/**'
+     - 'deps_src/**'
+     - 'cmake/**'
+     - 'src/**'
+     - '**/CMakeLists.txt'
+     - 'version.inc'
+     - 'localization/**'
+     - 'resources/**'
+     - 'build_win.bat'
+     - '.github/workflows/windows_only.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: windows-only-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build_windows:
+    name: Build Windows x64
+    permissions:
+      actions: write
+      contents: write
+      id-token: write
+    uses: ./.github/workflows/build_check_cache.yml
+    with:
+      os: windows-latest
+      arch: x64
+      compiler: clang
+      build-deps-only: false
+      force-build: false
+    secrets: inherit
